@@ -1,4 +1,5 @@
 
+import os
 import json
 import csv
 import openai
@@ -69,6 +70,8 @@ def save_result(data, save_path):
 
 if __name__ == '__main__':
     for template_choice in [1,2,3]:
+        if not os.path.exists(f"./results_prompt_{template_choice}"):
+            os.makedirs(f"./results_prompt_{template_choice}")
         for domain in ["DT", "A", "CC", "FM", "HC", "LA"]:
             sents, topics, labels = read_sem16(f"./twitter_data_naacl/twitter_test{domain}_seenval/test.csv")
             total_result = chatgpt_predict(sents, topics, labels, template_choice)
