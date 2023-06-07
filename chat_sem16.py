@@ -1,6 +1,7 @@
 
 import os
 import json
+import threading
 import csv
 import openai
 
@@ -10,7 +11,7 @@ from tenacity import (
     wait_random_exponential,
 )
 
-openai.api_key = "Your Own API-KEY"
+openai.api_key = "your own apikey"
 
 @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6))
 def completion_with_backoff(**kwargs):
@@ -45,11 +46,20 @@ def chatgpt_predict(sents, topics, labels, template_choice):
     idx = 0
     for sent, topic, label in zip(sents, topics, labels):
         if template_choice == 1:
-            prompt = f'What is the stance of the sentence: "{sent}" to the target "{topic}". select from "favor, against or neutral".'
+            prompt = f"tweet: {sent}\n\ntopic: {topic}\n\n" + \
+                     f"Give you the above tweet and topic, determine the stance of the tweet towards the topic, the stance can be favor, against, neutral or irrelevant."
         elif template_choice == 2:
-            prompt = f'For the target "{topic}", what is the stance for the "{sent}"? select from "favor, against or neutral".'
+            prompt = f"What is the stance of the tweet '''{sent}''' to the topic '''{topic}'''?" + \
+                       f"\n\n" + f"select the stance from favor, against, neutral or irrelevant."
         elif template_choice == 3:
-            prompt = f'For the sentence "{sent}", what is the stance for the target "{topic}"? select from "favor, against or neutral".'
+            prompt = f"Give you a tweet and a topic, determine the stance of the tweet towards the topic, the stance can be favor, against, neutral or irrelevant." + \
+                       f"\n\ntweet: {sent}\n\ntopic: {topic}"
+        elif template_choice == 4:
+            prompt = f"Provide a tweet and a topic, assess what attitude the tweet holds towards the topic; the stance could be favor, against, neutral or irrelevant." + \
+                     f"\n\ntweet: {sent}\n\ntopic: {topic}"
+        elif template_choice == 5:
+            prompt = f"Given a topic and a tweet related to it, identify the tweet’s attitude towards the topic as either favor, against, neutral or irrelevant." + \
+                     f"\n\ntweet: {sent}\n\ntopic: {topic}"
 
         chat_result = chat_gpt(prompt)
         temp = {}
@@ -68,11 +78,22 @@ def save_result(data, save_path):
         for item in data:
             wfile.write(item + "\n")
 
+def run_thread(domain, template_choice):
+    sents, topics, labels = read_sem16(f"./twitter_data_naacl/twitter_test{domain}_seenval/test.csv")
+    total_result = chatgpt_predict(sents, topics, labels, template_choice)
+    save_result(total_result, f"./results_prompt_{template_choice}/{domain}_result.txt")
+
 if __name__ == '__main__':
-    for template_choice in [1,2,3]:
+    for template_choice in [1,2,3,4,5]:
         if not os.path.exists(f"./results_prompt_{template_choice}"):
             os.makedirs(f"./results_prompt_{template_choice}")
+
+        thread_list = []
         for domain in ["DT", "A", "CC", "FM", "HC", "LA"]:
-            sents, topics, labels = read_sem16(f"./twitter_data_naacl/twitter_test{domain}_seenval/test.csv")
-            total_result = chatgpt_predict(sents, topics, labels, template_choice)
-            save_result(total_result, f"./results_prompt_{template_choice}/{domain}_result.txt")
+            t = threading.Thread(target=run_thread, args=(domain, template_choice,))
+            thread_list.append(t)
+
+        for t in thread_list:
+            t.start()
+        for t in thread_list:
+            t.join()
