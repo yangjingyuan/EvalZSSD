@@ -22,7 +22,7 @@ def post_process_label(chat_pred_str):
     chat_pred_str = chat_pred_str.replace(".", "")
     if "against" in chat_pred_str:
         chat_pred_str = "against"
-    elif "neutral" in chat_pred_str:
+    elif "neutral" in chat_pred_str or "irrelevant" in chat_pred_str:
         chat_pred_str = "neutral"
     elif "favor" in chat_pred_str:
         chat_pred_str = "favor"
@@ -32,8 +32,9 @@ def post_process_label(chat_pred_str):
 if __name__ == '__main__':
     print_debug_info = True
     debug_list = []
-    for template_choice in [1,2,3]:
+    for template_choice in [1,2,3,4,5]:
         print(f"Evaluate results_prompt_{template_choice}")
+        score_list = []
         for domain in ["DT", "HC", "FM", "LA", "A", "CC"]:
             data = read_data(f"./results_prompt_{template_choice}/{domain}_result.txt")
             preds = []
@@ -58,7 +59,9 @@ if __name__ == '__main__':
             f1_report = f1_score(labels, preds, labels=[0, 1], average='macro')
             #print(f"---------{domain}: {cls_report}---------")
             print(f"---------{domain}: {f1_report}----------------")
+            score_list.append(f1_report)
 
+        print(f"average f1_score is {sum(score_list)/len(score_list)}")
         if print_debug_info:
             random.shuffle(debug_list)
             debug_list = debug_list[:200]
