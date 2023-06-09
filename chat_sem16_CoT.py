@@ -1,5 +1,7 @@
 
+import os
 import json
+import threading
 import csv
 import openai
 
@@ -9,7 +11,7 @@ from tenacity import (
     wait_random_exponential,
 )
 
-openai.api_key = "you own key"
+openai.api_key = "your own apikey"
 
 @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6))
 def completion_with_backoff(**kwargs):
@@ -29,8 +31,10 @@ def read_sem16(test_path):
     print(f"{test_path} has {len(sents)} samples")
     return sents, topics, labels
 
-def chat_gpt_cot_1(sent, topic):
-    prompt_1 = f'What is the stance of the sentence: "{sent}" to the target "{topic}" and explain why?'
+def chat_gpt_zero_shot_cot(sent, topic):
+    prompt_1= f"Give you a tweet and a topic, let's think step by step and then determine the stance of the tweet towards the topic, the stance can be favor, against, neutral or irrelevant." + \
+             f"\n\ntweet: {sent}\n\ntopic: {topic}"
+
     history = []
     output_1 = completion_with_backoff(
         model="gpt-3.5-turbo",
@@ -41,7 +45,8 @@ def chat_gpt_cot_1(sent, topic):
     history.append(f"USER: {prompt_1}")
     history.append(f"ASSISTANT: {output_1.choices[0].message.content}")
 
-    prompt_2 = f'According to the above content, select corresponding stance from "favor, against or neutral".'
+    prompt_2 = f"According to the above conversation, select corresponding stance from favor, against, neutral or irrelevant."
+
     output_2 = completion_with_backoff(
         model="gpt-3.5-turbo",
         messages=[
@@ -55,59 +60,61 @@ def chat_gpt_cot_1(sent, topic):
 
     return "\n".join(history), output_2.choices[0].message.content
 
-def chat_gpt_cot_2(sent, topic):
-    prompt = f'''What is the stance of the sentence: "@realDonaldTrump: We have got to take our country back. It's time! Win it Mr. Trump #SemST" to the target "donald trump"？ Give me an explanation and select from "favor, against or neutral".
-    Explanation:
-    The sentence "@realDonaldTrump: We have got to take our country back. It's time! Win it Mr. Trump #SemST" expresses a positive stance towards Donald Trump. The mention of "@realDonaldTrump" indicates that the message is attributed to Donald Trump's Twitter account, suggesting that it aligns with his views. The use of phrases like "take our country back" and "Win it Mr. Trump" implies support for Trump and his agenda.
-    
-    Result:
-    favor
-    
-    What is the stance of the sentence: "{sent}" to the target "{topic}"？? Give me an explanation and select from "favor, against or neutral".
-    '''
-    history = []
-    output = completion_with_backoff(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "user", "content": prompt}
-        ]
-    )
-    history.append(f"USER: {prompt}")
-    history.append(f"ASSISTANT: {output.choices[0].message.content}")
+def chat_gpt_few_shot_cot(sent, topic):
+    few_shot_examples = {
+    "climate change is a real concern": '''tweet: Wearing a sweater at the end of June! #itfeelslikespring #SemST
 
-    return "\n".join(history), output.choices[0].message.content
+topic: climate change is a real concern
 
-def chat_gpt_cot_3(sent, topic):
-    prompt = f'''
-    What is the stance of the sentence: "@realDonaldTrump: We have got to take our country back. It's time! Win it Mr. Trump #SemST" to the target "donald trump"？ Give me an explanation and select from "favor, against or neutral".
+rational: This is an interesting task. I would say the stance of the tweet towards the topic is favor, because the tweet implies that the weather is unusual for the season and uses hashtags that suggest dissatisfaction with the situation. This could indicate that the tweeter is concerned about climate change and its effects on the environment.
 
-    Explanation:
-    The sentence "@realDonaldTrump: We have got to take our country back. It's time! Win it Mr. Trump #SemST" expresses a positive stance towards Donald Trump. The mention of "@realDonaldTrump" indicates that the message is attributed to Donald Trump's Twitter account, suggesting that it aligns with his views. The use of phrases like "take our country back" and "Win it Mr. Trump" implies support for Trump and his agenda.
+stance: favor''',
+    "atheism": '''tweet: @AJEnglish and, who left real #spiritual and #material #devastation of the countries where is grafted,and installed. #Ummah,#Hadith #SemST
 
-    Result:
-    favor
-    
-    
-    What is the stance of the sentence: "H stands for Holding Back e-mails belonging to #WeThePeople #obstructingjustice #WakeUpAmerica #HillaryLiesMatter #UniteBIue #SemST" to the target "hillary clinton"? Give me an explanation and select from "favor, against or neutral".
-    
-    Explanation:
-    Based on the given sentence, the stance towards Hillary Clinton is against. The sentence suggests that "H" stands for Holding Back emails belonging to #WeThePeople, #obstructingjustice, #WakeUpAmerica, #HillaryLiesMatter, #UniteBIue, and #SemST. The hashtags used in the sentence, such as #HillaryLiesMatter, imply a negative sentiment towards Hillary Clinton. Therefore, the stance of the sentence is against Hillary Clinton.
-    
-    Result:
-    against
-    
-    
-    What is the stance of the sentence: "@DavidAttenborough meets @BarackObama on #TVNZOne interview on his life and the effects of #SemST" to the target "climate change is a real concern"? Give me an explanation and select from "favor, against or neutral".
-    
-    Explanation:
-    The given sentence does not directly express a stance towards the target "climate change is a real concern." The sentence states that "@DavidAttenborough meets @BarackObama on #TVNZOne interview on his life and the effects of #SemST." It mentions the interview between David Attenborough and Barack Obama, focusing on their discussion of "his life and the effects of #SemST." It does not provide a clear indication of whether the sentence is in favor of, against, or neutral towards the statement "climate change is a real concern." Therefore, the stance of the sentence towards the target is neutral.
-    
-    Result:
-    neutral
+topic: atheism
 
+rational: because the tweet uses words that suggest a religious perspective and criticizes a media outlet that may be seen as secular or liberal. This could indicate that the tweeter is opposed to atheism and its influence on society.
 
-    What is the stance of the sentence: "{sent}" to the target "{topic}"？? Give me an explanation and select from "favor, against or neutral".
-    '''
+stance: against''',
+    "donald trump": '''tweet: @SCOTUScare penned by @ChiefJusticeJR  ends rule of law and freedom. What law will SCOTUS  edit next? @RedNationRising #SemST
+
+topic: donald trump
+
+rational: Supreme Court’s decision on health care and its implications for the rule of law and freedom. This topic has nothing to do with Donald Trump or his policies, so the tweet is not expressing any opinion for or against him.
+
+stance: irrelevant''',
+    "feminist movement":'''tweet: @POBREClTA @JustLove_Katie @WillBrianna "running your dick sucker" yes because THAT is the purpose of your mouth lol #SemST
+
+topic: feminist movement
+
+rational: The tweet uses a vulgar and derogatory term for the mouth and mocks the person for using it to express their opinion. This could indicate that the tweeter is against the feminist movement and its values of equality and empowerment for women.
+
+stance: against''',
+    "legalization of abortion": '''tweet: Anti-choice laws are entirely men controlling women  #SemST
+
+topic: legalization of abortion
+
+rational: The tweet expresses a strong opinion against anti-choice laws, which are laws that restrict or prohibit abortion. This could indicate that the tweeter is in favor of legalization of abortion and women’s right to choose.
+
+stance: favor''',
+    "hillary clinton": '''tweet: @Upworthy @HillaryClinton It should be illegal for an employer to discriminate against their workers. #EqualityForAll #SemST
+
+topic: hillary clinton
+
+rational: The tweet is quoting a statement made by Hillary Clinton and uses hashtags that support her campaign slogan and values. This could indicate that the tweeter is in favor of Hillary Clinton and her policies on workers’ rights and equality.
+
+stance: favor'''
+    }
+
+    prompt = f"Give you a tweet and a topic, determine the stance of the tweet towards the topic, the stance can be favor, against, neutral or irrelevant. " + \
+        "\n——————————————————————\n" + \
+        "——————————————————————\n".join([v+"\n" for k, v in few_shot_examples.items() if k != topic]) + \
+        f'''\n——————————————————————\ntweet: {sent}
+
+topic: {topic}
+
+rational: '''
+
     history = []
     output = completion_with_backoff(
         model="gpt-3.5-turbo",
@@ -125,12 +132,12 @@ def chatgpt_predict(sents, topics, labels, template_choice):
     idx = 0
     for sent, topic, label in zip(sents, topics, labels):
         if template_choice == 1:
-            prompt, chat_result = chat_gpt_cot_1(sent, topic)
+            prompt, chat_result = chat_gpt_zero_shot_cot(sent, topic)
         elif template_choice == 2:
-            prompt, chat_result = chat_gpt_cot_2(sent, topic)
-        elif template_choice == 3:
-            prompt, chat_result = chat_gpt_cot_3(sent, topic)
+            prompt, chat_result = chat_gpt_few_shot_cot(sent, topic)
+        print("-" * 20)
         print(prompt)
+        print("-" * 20)
         temp = {}
         temp["sent"] = sent
         temp["topic"] = topic
@@ -147,10 +154,23 @@ def save_result(data, save_path):
         for item in data:
             wfile.write(item + "\n")
 
+def thread_run(domain, template_choice):
+    sents, topics, labels = read_sem16(f"./twitter_data_naacl/twitter_test{domain}_seenval/test.csv")
+    total_result = chatgpt_predict(sents, topics, labels, template_choice)
+    save_result(total_result, f"./results_prompt_CoT_{template_choice}/{domain}_result.txt")
+
 
 if __name__ == '__main__':
-    for template_choice in [1, 2, 3]:
+    for template_choice in [1,2]:
+        if not os.path.exists(f"./results_prompt_CoT_{template_choice}"):
+            os.makedirs(f"./results_prompt_CoT_{template_choice}")
+
+        thread_list = []
         for domain in ["DT", "A", "CC", "FM", "HC", "LA"]:
-            sents, topics, labels = read_sem16(f"./twitter_data_naacl/twitter_test{domain}_seenval/test.csv")
-            total_result = chatgpt_predict(sents, topics, labels)
-            save_result(total_result, f"./results_prompt_1_CoT_{template_choice}/{domain}_result.txt")
+            t = threading.Thread(target=thread_run, args=(domain, template_choice,))
+            thread_list.append(t)
+
+        for t in thread_list:
+            t.start()
+        for t in thread_list:
+            t.join()

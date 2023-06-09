@@ -22,7 +22,7 @@ def post_process_label(chat_pred_str):
     chat_pred_str = chat_pred_str.replace(".", "")
     if "against" in chat_pred_str:
         chat_pred_str = "against"
-    elif "neutral" in chat_pred_str:
+    elif "neutral" in chat_pred_str or "irrelevant" in chat_pred_str:
         chat_pred_str = "neutral"
     elif "favor" in chat_pred_str:
         chat_pred_str = "favor"
@@ -30,12 +30,13 @@ def post_process_label(chat_pred_str):
     return pred
 
 if __name__ == '__main__':
-    print_debug_info = False
+    print_debug_info = True
     debug_list = []
     for template_choice in [1,2]:
-        print(f"Evaluate results_prompt_1_CoT_{template_choice}")
+        print(f"Evaluate results_prompt_CoT_{template_choice}")
+        score_list = []
         for domain in ["DT", "HC", "FM", "LA", "A", "CC"]:
-            data = read_data(f"./results_prompt_1_CoT_{template_choice}/{domain}_result.txt")
+            data = read_data(f"./results_prompt_CoT_{template_choice}/{domain}_result.txt")
             preds = []
             labels = []
             for sample in data:
@@ -45,6 +46,9 @@ if __name__ == '__main__':
                 label_id = sample["label"]
                 label_str = sem16_label2stance[label_id]
                 chat_str = sample["chat_result"]
+
+                chat_str = chat_str.split("\n\nstance:")[-1].strip()
+
                 pred_id = post_process_label(chat_str)
                 preds.append(pred_id)
                 labels.append(label_id)
@@ -58,9 +62,11 @@ if __name__ == '__main__':
             f1_report = f1_score(labels, preds, labels=[0, 1], average='macro')
             #print(f"---------{domain}: {cls_report}---------")
             print(f"---------{domain}: {f1_report}----------------")
+            score_list.append(f1_report)
 
+        print(f"average f1_score is {sum(score_list)/len(score_list)}")
         if print_debug_info:
             random.shuffle(debug_list)
             debug_list = debug_list[:200]
             df = pd.DataFrame(debug_list, columns=['SENT', 'TOPIC', "PRED", "LABEL", "PROMPT", "IS_RIGHT"])
-            df.to_excel(f"./output_sem16_prompt_{template_choice}.xlsx", index=False)
+            df.to_excel(f"./output_sem16_prompt_{template_choice}_CoT.xlsx", index=False)
