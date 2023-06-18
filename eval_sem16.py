@@ -32,7 +32,7 @@ def post_process_label(chat_pred_str):
 if __name__ == '__main__':
     print_debug_info = True
     debug_list = []
-    for template_choice in [1,2,3,4,5]:
+    for template_choice in [1,2,3,4,5,6,7,8,9]:
         print(f"Evaluate results_prompt_{template_choice}")
         score_list = []
         for domain in ["DT", "HC", "FM", "LA", "A", "CC"]:

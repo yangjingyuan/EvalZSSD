@@ -60,6 +60,18 @@ def chatgpt_predict(sents, topics, labels, template_choice):
         elif template_choice == 5:
             prompt = f"Given a topic and a tweet related to it, identify the tweet’s attitude towards the topic as either favor, against, neutral or irrelevant." + \
                      f"\n\ntweet: {sent}\n\ntopic: {topic}"
+        elif template_choice == 6:
+            prompt = f"tweet: {sent}\n\ntopic: {topic}\n\n" + \
+                     f"Provide you the above tweet and topic, assess what attitude the tweet holds towards the topic; the stance could be favor, against, neutral or irrelevant."
+        elif template_choice == 7:
+            prompt = f"tweet: {sent}\n\ntopic: {topic}\n\n" + \
+                     f"Given the above topic and a tweet related to it, identify the tweet’s attitude towards the topic as either favor, against, neutral or irrelevant."
+        elif template_choice == 8:
+            prompt = f"Choose the attitude of the tweet '''{sent}''' towards the topic '''{topic}'''. " + \
+                     f"\n\n" + f"select it from favor, against, neutral or irrelevant."
+        elif template_choice == 9:
+            prompt = f"How does the tweet '''{sent}''' relate to the topic '''{topic}'''? " + \
+                     f"\n\n" + f"pick the stance that matches: favor, against, neutral or irrelevant."
 
         chat_result = chat_gpt(prompt)
         temp = {}
@@ -84,7 +96,7 @@ def run_thread(domain, template_choice):
     save_result(total_result, f"./results_prompt_{template_choice}/{domain}_result.txt")
 
 if __name__ == '__main__':
-    for template_choice in [1,2,3,4,5]:
+    for template_choice in [1,2,3,4,5,6,7,8,9]:
         if not os.path.exists(f"./results_prompt_{template_choice}"):
             os.makedirs(f"./results_prompt_{template_choice}")
 
